@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useCart } from '../lib/cart';
 import { useAuth } from '../lib/auth';
-import { submitOrder } from '../lib/checkout';
+import { submitOrder, claimFreeOrder } from '../lib/checkout';
 import { createCheckoutSession } from '../lib/stripeCheckout';
 
 const BILLING_LABELS: Record<string, string> = {
@@ -20,7 +20,10 @@ export default function CartDrawer({ onClose, onRequireLogin }: Props) {
   const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<
-    { kind: 'success'; orderId: string } | { kind: 'error'; message: string } | null
+    | { kind: 'success'; orderId: string }
+    | { kind: 'free'; orderId: string }
+    | { kind: 'error'; message: string }
+    | null
   >(null);
 
   async function handleCheckout() {
@@ -47,6 +50,19 @@ export default function CartDrawer({ onClose, onRequireLogin }: Props) {
     if (res.error || !res.orderId) {
       setSubmitting(false);
       setResult({ kind: 'error', message: res.error ?? 'สั่งซื้อไม่สำเร็จ' });
+      return;
+    }
+
+    // ฿0 order (trial/free pricing) — skip Stripe, grant entitlements directly.
+    if (res.totalBaht === 0) {
+      const freeRes = await claimFreeOrder(res.orderId);
+      setSubmitting(false);
+      if (freeRes.error) {
+        setResult({ kind: 'error', message: freeRes.error });
+        return;
+      }
+      setResult({ kind: 'free', orderId: res.orderId });
+      clear();
       return;
     }
 
@@ -91,7 +107,7 @@ export default function CartDrawer({ onClose, onRequireLogin }: Props) {
 
           {items.map((item) => (
             <div
-              key={item.toolId + item.billingType}
+              key={item.priceId}
               className="flex items-start justify-between gap-3 bg-panel-50 rounded-xl p-4"
             >
               <div>
@@ -106,7 +122,7 @@ export default function CartDrawer({ onClose, onRequireLogin }: Props) {
               </div>
               <button
                 type="button"
-                onClick={() => removeItem(item.toolId, item.billingType)}
+                onClick={() => removeItem(item.priceId)}
                 className="text-red-600 text-xs font-semibold"
               >
                 ลบ
@@ -118,14 +134,15 @@ export default function CartDrawer({ onClose, onRequireLogin }: Props) {
         {result && (
           <div
             className={`mx-5 mb-3 rounded-lg p-3 text-xs font-semibold ${
-              result.kind === 'success'
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : 'bg-red-50 text-red-600 border border-red-200'
+              result.kind === 'error'
+                ? 'bg-red-50 text-red-600 border border-red-200'
+                : 'bg-green-50 text-green-700 border border-green-200'
             }`}
           >
-            {result.kind === 'success'
-              ? `สั่งซื้อสำเร็จ (เลขที่คำสั่งซื้อ ${result.orderId}) — รอทีมงานยืนยันการชำระเงิน`
-              : result.message}
+            {result.kind === 'free' && 'รับสิทธิ์ใช้งานฟรีสำเร็จแล้ว! เปิดดูได้ที่ "แอปที่คุณซื้อแล้ว" ด้านบน'}
+            {result.kind === 'success' &&
+              `สั่งซื้อสำเร็จ (เลขที่คำสั่งซื้อ ${result.orderId}) — รอทีมงานยืนยันการชำระเงิน`}
+            {result.kind === 'error' && result.message}
           </div>
         )}
 

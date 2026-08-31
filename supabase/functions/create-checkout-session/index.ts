@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
-      payment_method_types: ['card'],
+      payment_method_types: ['card', 'promptpay'],
       line_items: order.order_items.map((item: { price_baht: number; tools: { name: string } | null }) => ({
         price_data: {
           currency: 'thb',

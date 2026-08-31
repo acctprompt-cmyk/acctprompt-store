@@ -5,9 +5,10 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { BillingType, ToolWithPrices } from '../types';
+import type { BillingType, ToolPrice, ToolWithPrices } from '../types';
 
 export interface CartItem {
+  priceId: string;
   toolId: string;
   toolName: string;
   billingType: BillingType;
@@ -17,8 +18,8 @@ export interface CartItem {
 
 interface CartContextValue {
   items: CartItem[];
-  addItem: (tool: ToolWithPrices, billingType: BillingType) => void;
-  removeItem: (toolId: string, billingType: BillingType) => void;
+  addItem: (tool: ToolWithPrices, price: ToolPrice) => void;
+  removeItem: (priceId: string) => void;
   clear: () => void;
   total: number;
 }
@@ -42,21 +43,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [items]);
 
-  function addItem(tool: ToolWithPrices, billingType: BillingType) {
-    const price = tool.prices.find((p) => p.billing_type === billingType);
-    if (!price) return;
-
+  function addItem(tool: ToolWithPrices, price: ToolPrice) {
     setItems((prev) => {
-      const exists = prev.some(
-        (i) => i.toolId === tool.id && i.billingType === billingType,
-      );
-      if (exists) return prev;
+      if (prev.some((i) => i.priceId === price.id)) return prev;
       return [
         ...prev,
         {
+          priceId: price.id,
           toolId: tool.id,
           toolName: tool.name,
-          billingType,
+          billingType: price.billing_type,
           priceBaht: price.price_baht,
           maxSessions: price.max_sessions,
         },
@@ -64,10 +60,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     });
   }
 
-  function removeItem(toolId: string, billingType: BillingType) {
-    setItems((prev) =>
-      prev.filter((i) => !(i.toolId === toolId && i.billingType === billingType)),
-    );
+  function removeItem(priceId: string) {
+    setItems((prev) => prev.filter((i) => i.priceId !== priceId));
   }
 
   function clear() {

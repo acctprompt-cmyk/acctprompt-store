@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Check, ShoppingCart } from 'lucide-react';
-import type { ToolWithPrices } from '../types';
+import type { BillingType, ToolWithPrices } from '../types';
 import { useCart } from '../lib/cart';
 import { toolIcon } from '../lib/toolIcons';
 import { categoryGradient } from '../lib/categories';
@@ -11,22 +11,50 @@ interface Props {
   onBuyNow: () => void;
 }
 
-function cheapestMonthly(tool: ToolWithPrices) {
-  const monthly = tool.prices.filter((p) => p.billing_type === 'monthly');
-  if (monthly.length === 0) return null;
-  return monthly.reduce((min, p) => (p.price_baht < min.price_baht ? p : min), monthly[0]);
+const PERIOD_LABELS: Record<BillingType, string> = {
+  monthly: 'รายเดือน',
+  yearly: 'รายปี',
+  one_time: 'ครั้งเดียว',
+};
+
+function sortBySessions(prices: ToolWithPrices['prices']) {
+  return [...prices].sort((a, b) => (a.max_sessions ?? 1) - (b.max_sessions ?? 1));
 }
 
 export default function ProductCard({ tool, onAddedToCart, onBuyNow }: Props) {
-  const price = cheapestMonthly(tool);
   const { addItem } = useCart();
   const [justAdded, setJustAdded] = useState(false);
   const Icon = toolIcon(tool.slug);
   const gradient = categoryGradient(tool.category);
 
+  // Distinct billing periods this tool is actually sold under — admin controls
+  // this by which tool_prices rows exist, so a period only shows up here if
+  // it's for sale.
+  const periods = useMemo(
+    () => Array.from(new Set(tool.prices.map((p) => p.billing_type))),
+    [tool.prices],
+  );
+  const [billingType, setBillingType] = useState<BillingType | undefined>(periods[0]);
+
+  const tiers = useMemo(
+    () => sortBySessions(tool.prices.filter((p) => p.billing_type === billingType)),
+    [tool.prices, billingType],
+  );
+  const [priceId, setPriceId] = useState<string | undefined>(tiers[0]?.id);
+
+  const price = tool.prices.find((p) => p.id === priceId) ?? tiers[0] ?? null;
+  const hasScreenChoice = tiers.length > 1;
+  const hasPeriodChoice = periods.length > 1;
+
+  function selectPeriod(bt: BillingType) {
+    setBillingType(bt);
+    const firstTier = sortBySessions(tool.prices.filter((p) => p.billing_type === bt))[0];
+    setPriceId(firstTier?.id);
+  }
+
   function handleAdd() {
     if (!price) return;
-    addItem(tool, 'monthly');
+    addItem(tool, price);
     setJustAdded(true);
     onAddedToCart();
     setTimeout(() => setJustAdded(false), 1500);
@@ -34,7 +62,7 @@ export default function ProductCard({ tool, onAddedToCart, onBuyNow }: Props) {
 
   function handleBuyNow() {
     if (!price) return;
-    addItem(tool, 'monthly');
+    addItem(tool, price);
     onBuyNow();
   }
 
@@ -51,14 +79,54 @@ export default function ProductCard({ tool, onAddedToCart, onBuyNow }: Props) {
         </div>
         <div className="text-xs text-ink-500 leading-relaxed min-h-9">{tool.description}</div>
 
+        {hasPeriodChoice && (
+          <div className="flex gap-1.5 mt-1">
+            {periods.map((bt) => (
+              <button
+                key={bt}
+                type="button"
+                onClick={() => selectPeriod(bt)}
+                className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition-colors ${
+                  billingType === bt
+                    ? 'bg-brand-700 border-brand-700 text-white'
+                    : 'bg-white border-line-200 text-ink-500'
+                }`}
+              >
+                {PERIOD_LABELS[bt] ?? bt}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {hasScreenChoice && (
+          <div className="flex flex-wrap gap-1.5">
+            {tiers.map((tier) => (
+              <button
+                key={tier.id}
+                type="button"
+                onClick={() => setPriceId(tier.id)}
+                className={`text-[11px] font-bold px-2.5 py-1 rounded-full border transition-colors ${
+                  priceId === tier.id
+                    ? 'bg-teal-500 border-teal-500 text-brand-950'
+                    : 'bg-white border-line-200 text-ink-500'
+                }`}
+              >
+                {tier.max_sessions ? `${tier.max_sessions} จอ` : 'ไม่จำกัดจอ'}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="mt-auto pt-2">
           {price ? (
             <div className="text-xs text-ink-300 font-semibold">
-              เริ่มต้น{' '}
               <span className="font-serif text-lg font-bold text-brand-700">
                 ฿{price.price_baht.toLocaleString()}
               </span>
-              <span className="text-ink-300">/เดือน</span>
+              <span className="text-ink-300">
+                /{price.billing_type === 'yearly' ? 'ปี' : price.billing_type === 'one_time' ? 'ครั้ง' : 'เดือน'}
+                {price.max_sessions ? ` · ${price.max_sessions} จอ` : ''}
+              </span>
             </div>
           ) : (
             <div className="text-xs text-ink-300 font-semibold">ราคาเร็วๆ นี้</div>
