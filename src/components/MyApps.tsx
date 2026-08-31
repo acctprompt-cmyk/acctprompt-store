@@ -76,7 +76,7 @@ export default function MyApps() {
         <p className="text-sm text-ink-500 mb-4.5">คลิกเพื่อเปิดใช้งานแอป</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {entitlements.map((ent) => {
+        {entitlements.filter((ent) => ent.tools).map((ent) => {
           const expiryLabel = daysLeft(ent.expires_at);
           const expired = expiryLabel === 'หมดอายุแล้ว';
           const Icon = toolIcon(ent.tools.slug);
