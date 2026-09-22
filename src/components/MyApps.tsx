@@ -29,8 +29,17 @@ function useStripeReturnStatus() {
   return status;
 }
 
+// Cross-app SSO handoff: append this session's refresh token so the destination
+// app (Streamlit tool or Tax Twin Easy) can log the user straight in instead of
+// showing its own login form.
+function withSso(url: string | null | undefined, refreshToken: string | undefined): string {
+  if (!url || !refreshToken) return url || '#';
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}sso_rt=${encodeURIComponent(refreshToken)}`;
+}
+
 export default function MyApps() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { entitlements, loading, error, refetch } = useEntitlements();
   const stripeStatus = useStripeReturnStatus();
   const [polling, setPolling] = useState(stripeStatus === 'success');
@@ -84,7 +93,7 @@ export default function MyApps() {
           return (
             <a
               key={ent.id}
-              href={ent.tools.app_base_url ?? '#'}
+              href={withSso(ent.tools.app_base_url, session?.refresh_token)}
               target={ent.tools.app_base_url ? '_blank' : undefined}
               rel="noreferrer"
               className={`bg-white rounded-2xl border border-brand-100 shadow-sm p-5 flex flex-col gap-2.5 transition-all ${
